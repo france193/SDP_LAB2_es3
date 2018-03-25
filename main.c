@@ -29,11 +29,11 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <stdbool.h>
 
 /* PROTOTYPES */
 void* Malloc(int size);
-void fill_array_with_rand_even_number(int *array, int array_size, int min_rand, int max_rand);
-void fill_array_with_rand_odd_number(int *array, int array_size, int min_rand, int max_rand);
+void fill_array_with_rand_number(int *array, int array_size, int min_rand, int max_rand, bool even);
 
 /* MAIN */
 int main( int argc, char *argv[] ){
@@ -62,8 +62,8 @@ int main( int argc, char *argv[] ){
     v2 = (int*)Malloc(n2*sizeof(int));
 
     // fill array
-    fill_array_with_rand_even_number(v1, n1, 10, 100);
-    fill_array_with_rand_odd_number(v2, n2, 21, 101);
+    fill_array_with_rand_number(v1, n1, 10, 100, true);
+    fill_array_with_rand_number(v2, n2, 21, 101, false);
 
     // open file
     fpb1 = fopen("fv1.b","wb");
@@ -104,26 +104,20 @@ void* Malloc(int size){
 }
 
 /* FILL ARRAY */
-void fill_array_with_rand_even_number(int *array, int array_size, int min_rand, int max_rand){
+void fill_array_with_rand_number(int *array, int array_size, int min_rand, int max_rand, bool even){
     for(int i=0; i<array_size; i++){
         int random = (rand()%(max_rand-min_rand+1)) + min_rand;
 
-        // even
-        if (random % 2 != 0) {
-            random++;
-        }
-
-        array[i] = random;
-    }
-}
-
-void fill_array_with_rand_odd_number(int *array, int array_size, int min_rand, int max_rand){
-    for(int i=0; i<array_size; i++){
-        int random = (rand()%(max_rand-min_rand+1)) + min_rand;
-
-        // odd
-        if (random % 2 == 0) {
-            random++;
+        if (even) {
+            // even
+            if (random % 2 != 0) {
+                random++;
+            }
+        } else {
+            // odd
+            if (random % 2 == 0) {
+                random++;
+            }
         }
 
         array[i] = random;
