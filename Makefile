@@ -1,6 +1,6 @@
 target:
 	clear
-	gcc -g -o main -Wall -pthread main.c
+	gcc -Wall -g -o main main.c -lpthread
 
 clean:
 	rm main
