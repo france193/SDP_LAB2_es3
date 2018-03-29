@@ -41,8 +41,7 @@ typedef struct {
     char filename[N];
 } Box;
 
-sem_t *client_me, *request, *response_ready;
-pthread_mutex_t mutex;
+sem_t *client_me, *full, *empty;
 
 int g, tot_requests;
 Box box1, box2;
@@ -57,6 +56,16 @@ void first_part(int argc, char *argv[]);
 int main(int argc, char *argv[]){
     first_part(argc, argv);
 
+    /**
+     * 1 Server = 1 Consumer
+     * 2 Clients = 2 Producers
+     *
+     * SEMAPHORES INITIALIZATION
+     * full: 0
+     * empty: 1 (max 1 per time)
+     * client_me: 1
+     * **/
+
     int rc1, rc2;
     pthread_t thread[THREADS];
 
@@ -69,75 +78,73 @@ int main(int argc, char *argv[]){
 
     // semaphores allocation
     client_me = (sem_t *)malloc(sizeof(sem_t));
-    request = (sem_t *)malloc(sizeof(sem_t));
-    response_ready = (sem_t *)malloc(sizeof(sem_t));
+    full = (sem_t *)malloc(sizeof(sem_t));
+    empty = (sem_t *)malloc(sizeof(sem_t));
 
     // error check allocations
-    if (client_me == NULL || request == NULL || response_ready == NULL) {
+    if (client_me == NULL || empty == NULL || full == NULL) {
         // error
         perror("\n - (e) Error allocating semaphores!");
         exit(-1);
     }
 
-    // init mutex
-    if (pthread_mutex_init(&mutex, NULL)) {
-        // error
-        perror("\n - (e) Error creating mutex!");
-        exit(-1);
-    }
-
     // init at 0
-    if (sem_init(client_me, 0, 0) == -1) {
+    if (sem_init(client_me, 0, 1) == -1) {
         // error
         perror("\n - (e) Error creating semaphore1!");
         exit(-1);
     }
 
     // init at 0
-    if (sem_init(request, 0, 0) == -1) {
+    if (sem_init(full, 0, 0) == -1) {
         // error
         perror("\n - (e) Error creating semaphore2!");
         exit(-1);
     }
 
     // init at 0
-    if ( sem_init(response_ready, 0, 0) == -1 ) {
+    if (sem_init(empty, 0, 0) == -1 ) {
         // error
         perror("\n - (e) Error creating semaphore3!");
         exit(-1);
     }
 
     // create 2 clients
-    if ( (rc1 = pthread_create(&thread[0], NULL, client, (void *) &box1)) != 0 ) {
+    if ((rc1 = pthread_create(&thread[0], NULL, client, (void *) &box1)) != 0) {
         // error
         perror("\n - (e) Error creating thread1!");
         exit(-1);
     }
 
-    if ( (rc2 = pthread_create(&thread[1], NULL, client, (void *) &box2)) != 0 ) {
+    if ((rc2 = pthread_create(&thread[1], NULL, client, (void *) &box2)) != 0) {
         // error
         perror("\n - (e) Error creating thread2!");
         exit(-1);
     }
 
-    tot_requests = 0;
+    tot_requests = 0;;
+
+    sem_post(empty);
 
     // start server
     while (true) {
         if (box1.active || box2.active) {
-            sem_wait(request);
+            //printf("Main %lu - 1\n", pthread_self());
+            sem_wait(full);
 
-            pthread_mutex_lock(&mutex);
             g = g * 3;
-            pthread_mutex_unlock(&mutex);
+            //printf("Main %lu - 2\n", pthread_self());
+            tot_requests++;
 
-            request++;
-
-            sem_post(response_ready);
+            sem_post(empty);
+            //printf("Main %lu - 3\n", pthread_self());
         } else {
+            printf("Main %lu - exiting\n", pthread_self());
             break;
         }
     }
+
+    printf("Main %lu - exited\n", pthread_self());
 
     for (int i=0; i<THREADS; i++) {
         pthread_join(thread[i], NULL);
@@ -145,11 +152,10 @@ int main(int argc, char *argv[]){
 
     // release all variables
     sem_destroy(client_me);
-    sem_destroy(request);
-    sem_destroy(response_ready);
-    pthread_mutex_destroy(&mutex);
+    sem_destroy(full);
+    sem_destroy(empty);
 
-    fprintf(stdout, "All client terminated, served requests: %d", tot_requests);
+    fprintf(stdout, "All client terminated, total served requests: %d\n", tot_requests-2);
 
     pthread_exit(0);
 }
@@ -241,11 +247,11 @@ void fill_array_with_rand_number(int *array, int array_size, int min_rand, int m
 }
 
 void *client(void *box_passed) {
-    // TODO
     Box *box;
-    box = (Box *) box_passed;
-
     FILE *fp;
+    int x;
+
+    box = (Box *) box_passed;
 
     if ((fp = fopen(box->filename, "rb")) == NULL) {
         //error
@@ -253,29 +259,22 @@ void *client(void *box_passed) {
         exit(-1);
     }
 
-    int x;
+    while (fread(&x, sizeof(int), 1, fp) == 1) {
+        sem_wait(empty);
 
-    while ( fread(&x, sizeof(int), 1, fp) == 1 ) {
         sem_wait(client_me);
-
         g = x;
-
-        printf("Client %lu - before server process %d\n", pthread_self(), g);
-        sem_post(request);
-        sem_wait(response_ready);
-        printf("Client %lu - after server process %d\n", pthread_self(), g);
-
         sem_post(client_me);
+
+        sem_post(full);
+
+        printf("Client %lu - before server process: %d\n", pthread_self(), x);
+        printf("Client %lu - after server process %d\n", pthread_self(), g);
     }
 
-    sem_wait(client_me);
+    printf("Client %lu - exited\n", pthread_self());
 
     box->active = false;
-
-    sem_post(request);
-    sem_wait(response_ready);
-
-    sem_post(client_me);
 
     fclose(fp);
 
